@@ -11,9 +11,10 @@ use ratatui::{
 
 use crate::app::{App, ActiveField};
 use crate::utils;
+use crate::auth;
+use crate::Cli;
 
-
-pub fn run() -> io::Result<()> {
+pub fn run(args: Cli) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stdout: io::Stdout = stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -51,10 +52,12 @@ pub fn run() -> io::Result<()> {
             });
             frame.render_widget(username_input, form_layout[0]);
 
-            let password_masked = "*".repeat(
+            let password_mask = if args.show_password { "*" } else { "" };  
+
+            let password_masked = password_mask.repeat(
                 utils::last_n_chars(app.password.as_str(), (form_layout[1].width - 2) as usize)
                     .len(),
-            );
+            );            
             let password_input = Paragraph::new(password_masked)
                 .block(Block::default().borders(Borders::ALL).title("Password"))
                 .style(match app.active_field {
@@ -77,13 +80,18 @@ pub fn run() -> io::Result<()> {
                     }
                 }
                 ActiveField::Password => {
-                    if app.password.is_empty() {
-                        frame.set_cursor_position((form_layout[1].x + 1, form_layout[1].y + 1));
-                    } else if form_layout[1].width > app.password.len() as u16 + 1 {
-                        frame.set_cursor_position((
-                            form_layout[1].x + app.password.len() as u16 + 1,
-                            form_layout[1].y + 1,
-                        ));
+                    match args.show_password {
+                        false => {}
+                        true => {
+                            if app.password.is_empty() {
+                                frame.set_cursor_position((form_layout[1].x + 1, form_layout[1].y + 1));
+                            } else if form_layout[1].width > app.password.len() as u16 + 1 {
+                                frame.set_cursor_position((
+                                    form_layout[1].x + app.password.len() as u16 + 1,
+                                    form_layout[1].y + 1,
+                                ));
+                            }
+                        }
                     }
                 }
             }
@@ -108,25 +116,16 @@ pub fn run() -> io::Result<()> {
                         }
                         KeyCode::Backspace => {
                             match app.active_field {
-                                ActiveField::Username => {
-                                    app.username.pop();
-                                }
-                                ActiveField::Password => {
-                                    app.password.pop();
-                                }
+                                ActiveField::Username => app.username.pop(),
+                                ActiveField::Password => app.password.pop(),
                             };
                         }
                         KeyCode::Enter => {
                             if app.username.is_empty() || app.password.is_empty() {
                                 continue;
                             }
-                            let service = "login";
-                            let mut auth = pam::Authenticator::with_password(service).unwrap();
-                            auth.get_handler()
-                                .set_credentials(app.username.as_str(), app.password.as_str());
-
-                            if auth.authenticate().is_ok() && auth.open_session().is_ok() {
-                                println!("Authentication successful!");
+                            if auth::authenticate(&app.username, &app.password) {
+                                auth::load_into_shell(&app.username)?;
                                 break;
                             } else {
                                 app.username.clear();

@@ -1,7 +1,10 @@
 use clap::Parser;
-use std::io;
+use nix::unistd::ForkResult;
+use nix::{fcntl, sys::stat, unistd};
+use std::{io, os::unix::io::AsRawFd};
 
 mod app;
+mod auth;
 mod tui;
 mod utils;
 
@@ -11,15 +14,48 @@ mod utils;
 struct Cli {
     /// The path to the TTY device. If omitted, rintty runs in test mode.
     tty_path: Option<String>,
+    
+    /// Show password in plain text instead of masking it
+    #[arg(short = 'p', long)]
+    show_password: bool,
 }
 
 fn main() -> io::Result<()> {
     let cli: Cli = Cli::parse();
-    if let Some(path) = cli.tty_path {
-        println!("Normal Mode: Would take over TTY at {}", path);
-    } else {
-        tui::run()?;
-    }
+    if let Some(ref path) = cli.tty_path {
+        // Forking allows setsid() to succeed. Otherwise, setsid() will fail with EPERM as it is a process group leader.
+        // https://man7.org/linux/man-pages/man2/setsid.2.html
+        match unsafe { unistd::fork() } {
+            Ok(ForkResult::Parent { .. }) => std::process::exit(0),
+            Ok(ForkResult::Child) => {
+                // Child process continues. It is no longer a process group leader.
+
+                unistd::setsid().unwrap_or_else(|e| panic!("Child: setsid failed: {}", e));
+
+                let tty_fd = fcntl::open(path.as_str(), fcntl::OFlag::O_RDWR, stat::Mode::empty())
+                    .unwrap_or_else(|e| panic!("fcntl::open of {} failed: {}", path, e));
+
+                unsafe {
+                    let result = libc::ioctl(tty_fd.as_raw_fd(), libc::TIOCSCTTY, 1);
+                    if result == -1 {
+                        // Get the last OS error to see why ioctl failed.
+                        let err = io::Error::last_os_error();
+                        panic!("ioctl(TIOCSCTTY) failed: {}", err);
+                    }
+                }
+
+                // Redirect stdin, stdout, and stderr to the TTY file descriptor.
+                // From this point on, all `println!`, `stdout()`, etc. will go to the TTY.
+                unistd::dup2_stdin(&tty_fd)?;
+                unistd::dup2_stdout(&tty_fd)?;
+                unistd::dup2_stderr(&tty_fd)?;
+            }
+            Err(e) => {
+                panic!("fork failed: {}", e);
+            }
+        }
+    } 
+    tui::run(cli)?;
 
     Ok(())
 }
