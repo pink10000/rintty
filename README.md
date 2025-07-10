@@ -2,6 +2,8 @@
 
 A modern TUI login screen for Linux, designed as a replacement for `agetty`.
 
+![Login Screen](img/login_screen.png)
+
 ## Features
 
 - 🎨 **Modern TUI**: Clean, interactive login interface built with [ratatui](https://github.com/ratatui-org/ratatui)
