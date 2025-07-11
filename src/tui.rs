@@ -124,12 +124,17 @@ pub fn run(args: Cli) -> io::Result<()> {
                             if app.username.is_empty() || app.password.is_empty() {
                                 continue;
                             }
-                            if auth::authenticate(&app.username, &app.password) {
-                                auth::load_into_shell(&app.username)?;
-                                break;
-                            } else {
-                                app.username.clear();
-                                app.password.clear();
+                            match args.tty_path {
+                                Some(_) => {
+                                    if auth::authenticate(&app.username, &app.password) {
+                                        auth::load_into_shell(&app.username)?;
+                                        break;
+                                    } else {
+                                        app.username.clear();
+                                        app.password.clear();
+                                    }
+                                }
+                                None => break,
                             }
                         }
                         _ => {}
