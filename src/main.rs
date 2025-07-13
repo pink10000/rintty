@@ -7,6 +7,7 @@ mod app;
 mod auth;
 mod tui;
 mod utils;
+mod animation;
 
 /// A TUI login screen for rintty, a modern replacement for agetty.
 #[derive(Parser, Debug)]
@@ -18,10 +19,16 @@ struct Cli {
     /// Show password in plain text instead of masking it
     #[arg(short = 'p', long)]
     show_password: bool,
+
+    /// The command to run for the background animation.
+    #[arg(long)]
+    animation: Option<String>,
 }
 
 fn main() -> io::Result<()> {
     let cli: Cli = Cli::parse();
+    // TODO: need to make sure animation exists and is executable
+
     if let Some(ref path) = cli.tty_path {
         // Forking allows setsid() to succeed. Otherwise, setsid() will fail with EPERM as it is a process group leader.
         // https://man7.org/linux/man-pages/man2/setsid.2.html

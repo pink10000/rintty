@@ -16,7 +16,7 @@ pub fn authenticate(username: &str, password: &str) -> bool {
 pub fn load_into_shell(username: &str) -> Result<(), io::Error> {
     let mut stdout = io::stdout();
     
-    terminal::disable_raw_mode()?; // this allows the terminal to process commands like ctrl-d
+    terminal::disable_raw_mode()?; // this allows the terminal to process commands like ctrl-d again
     execute!(
         stdout,
         terminal::LeaveAlternateScreen,
@@ -37,15 +37,14 @@ pub fn load_into_shell(username: &str) -> Result<(), io::Error> {
     
     std::env::set_current_dir(&user_info.dir)?;
     
-    unistd::setgid(user_info.gid)?;
-    unistd::setuid(user_info.uid)?;
+    unistd::setgid(user_info.gid)?; // we should have run this as sudo, so we need to drop root privileges 
+    unistd::setuid(user_info.uid)?; // or else we'll log in as root (bad!)
     
     let shell = CString::new(user_info.shell.to_str().unwrap()).unwrap();
     let shell_name = CString::new(
         user_info.shell.file_name().unwrap().to_str().unwrap()
     ).unwrap();
     
-    // Execute shell with proper argv[0] (shell name)
     unistd::execv(&shell, &[&shell_name])?;
     Ok(())
 }

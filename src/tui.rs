@@ -1,17 +1,20 @@
 use std::io::{self, stdout};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
-use crossterm::{execute, terminal::{EnterAlternateScreen, LeaveAlternateScreen}};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use crossterm::{
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
+};
 use ratatui::{
     prelude::{Constraint, CrosstermBackend, Direction, Layout, Rect, Style, Terminal},
-    widgets::{Block, Borders, Padding, Paragraph},
+    widgets::{Block, Borders, Clear, Padding, Paragraph},
 };
 
-use crate::app::{App, ActiveField};
-use crate::utils;
+use crate::app::{ActiveField, App};
 use crate::auth;
+use crate::utils;
 use crate::Cli;
 
 pub fn run(args: Cli) -> io::Result<()> {
@@ -21,11 +24,20 @@ pub fn run(args: Cli) -> io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
 
     let mut app = App::new();
+    let tick_rate = Duration::from_millis(50);
+    let mut last_tick = Instant::now();
 
     loop {
         terminal.draw(|frame| {
+            app.draw(frame, &args.animation);
+
             let frame_area: Rect = frame.area();
+
             let login_form_rect: Rect = login_form_rect(15, frame_area);
+
+            // Clear the area of the login form before drawing it.
+            // This erases the part of the animation that would be behind the form.
+            frame.render_widget(Clear, login_form_rect);
 
             let login_block = Block::default()
                 .title("Login")
@@ -52,12 +64,12 @@ pub fn run(args: Cli) -> io::Result<()> {
             });
             frame.render_widget(username_input, form_layout[0]);
 
-            let password_mask = if args.show_password { "*" } else { "" };  
+            let password_mask = if args.show_password { "*" } else { "" };
 
             let password_masked = password_mask.repeat(
                 utils::last_n_chars(app.password.as_str(), (form_layout[1].width - 2) as usize)
                     .len(),
-            );            
+            );
             let password_input = Paragraph::new(password_masked)
                 .block(Block::default().borders(Borders::ALL).title("Password"))
                 .style(match app.active_field {
@@ -79,25 +91,25 @@ pub fn run(args: Cli) -> io::Result<()> {
                         ));
                     }
                 }
-                ActiveField::Password => {
-                    match args.show_password {
-                        false => {}
-                        true => {
-                            if app.password.is_empty() {
-                                frame.set_cursor_position((form_layout[1].x + 1, form_layout[1].y + 1));
-                            } else if form_layout[1].width > app.password.len() as u16 + 1 {
-                                frame.set_cursor_position((
-                                    form_layout[1].x + app.password.len() as u16 + 1,
-                                    form_layout[1].y + 1,
-                                ));
-                            }
+                ActiveField::Password => match args.show_password {
+                    false => {}
+                    true => {
+                        if app.password.is_empty() {
+                            frame.set_cursor_position((form_layout[1].x + 1, form_layout[1].y + 1));
+                        } else if form_layout[1].width > app.password.len() as u16 + 1 {
+                            frame.set_cursor_position((
+                                form_layout[1].x + app.password.len() as u16 + 1,
+                                form_layout[1].y + 1,
+                            ));
                         }
                     }
-                }
+                },
             }
         })?;
 
-        if event::poll(Duration::from_millis(250))? {
+        // Handle timing for animation ticks.
+        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+        if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
@@ -117,30 +129,34 @@ pub fn run(args: Cli) -> io::Result<()> {
                         KeyCode::Backspace => {
                             match app.active_field {
                                 ActiveField::Username => app.username.pop(),
-                                ActiveField::Password => app.password.pop(),
+                                ActiveField::Password => app.password.pop()
                             };
                         }
                         KeyCode::Enter => {
                             if app.username.is_empty() || app.password.is_empty() {
                                 continue;
                             }
-                            match args.tty_path {
-                                Some(_) => {
-                                    if auth::authenticate(&app.username, &app.password) {
-                                        auth::load_into_shell(&app.username)?;
-                                        break;
-                                    } else {
-                                        app.username.clear();
-                                        app.password.clear();
-                                    }
+                            if args.tty_path.is_some() {
+                                if auth::authenticate(&app.username, &app.password) {
+                                    auth::load_into_shell(&app.username)?;
+                                    break;
+                                } else {
+                                    app.username.clear();
+                                    app.password.clear();
                                 }
-                                None => break,
+                            } else {
+                                break; // Exit in test mode on Enter.
                             }
                         }
                         _ => {}
                     }
                 }
             }
+        }
+
+        if last_tick.elapsed() >= tick_rate {
+            app.on_tick();
+            last_tick = Instant::now();
         }
     }
 
