@@ -1,7 +1,8 @@
 use clap::Parser;
 use nix::unistd::ForkResult;
 use nix::{fcntl, sys::stat, unistd};
-use std::{io, os::unix::io::AsRawFd};
+use simplelog::*;
+use std::{fs::File, io, os::unix::io::AsRawFd};
 
 mod app;
 mod auth;
@@ -27,6 +28,15 @@ struct Cli {
 
 fn main() -> io::Result<()> {
     let cli: Cli = Cli::parse();
+    
+    // Set up logging to file
+    WriteLogger::init(
+        LevelFilter::Debug,
+        Config::default(),
+        File::create("rintty.log").unwrap(),
+    ).unwrap();
+    
+    log::info!("Rintty starting up");
     // TODO: need to make sure animation exists and is executable
 
     if let Some(ref path) = cli.tty_path {

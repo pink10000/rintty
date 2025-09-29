@@ -24,94 +24,19 @@ pub fn run(args: Cli) -> io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
 
     let mut app = App::new();
-    let tick_rate = Duration::from_millis(50);
+    let tick_rate = Duration::from_millis(16); // ~60 FPS for smooth animations
     let mut last_tick = Instant::now();
-
+    let mut first_draw = true;
+    
     loop {
-        terminal.draw(|frame| {
-            app.draw(frame, &args.animation);
+        let mut needs_redraw = first_draw; // Always redraw on first iteration
+        first_draw = false;
 
-            let frame_area: Rect = frame.area();
-
-            let login_form_rect: Rect = login_form_rect(15, frame_area);
-
-            // Clear the area of the login form before drawing it.
-            // This erases the part of the animation that would be behind the form.
-            frame.render_widget(Clear, login_form_rect);
-
-            let login_block = Block::default()
-                .title("Login")
-                .borders(Borders::ALL)
-                .padding(Padding::horizontal(1));
-
-            let form_layout = Layout::default()
-                .direction(Direction::Vertical)
-                // .margin(1)
-                .constraints([Constraint::Length(3), Constraint::Length(3)])
-                .split(login_block.inner(login_form_rect));
-
-            frame.render_widget(login_block, login_form_rect);
-
-            // We subtract 2 from the width to account for the borders.
-            let username_input = Paragraph::new(utils::last_n_chars(
-                app.username.as_str(),
-                (form_layout[0].width - 2) as usize,
-            ))
-            .block(Block::default().borders(Borders::ALL).title("Username"))
-            .style(match app.active_field {
-                ActiveField::Username => Style::default().fg(ratatui::style::Color::LightMagenta),
-                _ => Style::default(),
-            });
-            frame.render_widget(username_input, form_layout[0]);
-
-            let password_mask = if args.show_password { "*" } else { "" };
-
-            let password_masked = password_mask.repeat(
-                utils::last_n_chars(app.password.as_str(), (form_layout[1].width - 2) as usize)
-                    .len(),
-            );
-            let password_input = Paragraph::new(password_masked)
-                .block(Block::default().borders(Borders::ALL).title("Password"))
-                .style(match app.active_field {
-                    ActiveField::Password => {
-                        Style::default().fg(ratatui::style::Color::LightMagenta)
-                    }
-                    _ => Style::default(),
-                });
-            frame.render_widget(password_input, form_layout[1]);
-
-            match app.active_field {
-                ActiveField::Username => {
-                    if app.username.is_empty() {
-                        frame.set_cursor_position((form_layout[0].x + 1, form_layout[0].y + 1));
-                    } else if form_layout[0].width > app.username.len() as u16 + 1 {
-                        frame.set_cursor_position((
-                            form_layout[0].x + app.username.len() as u16 + 1,
-                            form_layout[0].y + 1,
-                        ));
-                    }
-                }
-                ActiveField::Password => match args.show_password {
-                    false => {}
-                    true => {
-                        if app.password.is_empty() {
-                            frame.set_cursor_position((form_layout[1].x + 1, form_layout[1].y + 1));
-                        } else if form_layout[1].width > app.password.len() as u16 + 1 {
-                            frame.set_cursor_position((
-                                form_layout[1].x + app.password.len() as u16 + 1,
-                                form_layout[1].y + 1,
-                            ));
-                        }
-                    }
-                },
-            }
-        })?;
-
-        // Handle timing for animation ticks.
-        let timeout = tick_rate.saturating_sub(last_tick.elapsed());
-        if event::poll(timeout)? {
+        // Check for keyboard input
+        if event::poll(Duration::from_millis(0))? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
+                    needs_redraw = true; // User input always triggers redraw
                     match key.code {
                         KeyCode::Esc => break,
                         KeyCode::Tab => {
@@ -154,9 +79,94 @@ pub fn run(args: Cli) -> io::Result<()> {
             }
         }
 
+        // Update animation if enough time has passed
+        // Uses event-driven approach to update the animation.
+        // This is more efficient than the tick-based approach,
+        // because it only updates the animation when the user
+        // has interacted with the terminal or when the animation
+        // has updated.
         if last_tick.elapsed() >= tick_rate {
-            app.on_tick();
+            if app.on_tick() {
+                needs_redraw = true; // Animation updated
+            }
             last_tick = Instant::now();
+        }
+
+        // Only redraw if something changed
+        if needs_redraw {
+            terminal.draw(|frame| {
+                app.draw(frame, &args.animation);
+
+                let frame_area: Rect = frame.area();
+                let login_form_rect: Rect = login_form_rect(15, frame_area);
+
+                // Clear the area of the login form before drawing it.
+                frame.render_widget(Clear, login_form_rect);
+
+                let login_block = Block::default()
+                    .title("Login")
+                    .borders(Borders::ALL)
+                    .padding(Padding::horizontal(1));
+
+                let form_layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(3), Constraint::Length(3)])
+                    .split(login_block.inner(login_form_rect));
+
+                frame.render_widget(login_block, login_form_rect);
+
+                let username_input = Paragraph::new(utils::last_n_chars(
+                    app.username.as_str(),
+                    (form_layout[0].width - 2) as usize,
+                ))
+                .block(Block::default().borders(Borders::ALL).title("Username"))
+                .style(match app.active_field {
+                    ActiveField::Username => Style::default().fg(ratatui::style::Color::LightMagenta),
+                    _ => Style::default(),
+                });
+                frame.render_widget(username_input, form_layout[0]);
+
+                let password_mask = if args.show_password { "*" } else { "" };
+                let password_masked = password_mask.repeat(
+                    utils::last_n_chars(app.password.as_str(), (form_layout[1].width - 2) as usize)
+                        .len(),
+                );
+                let password_input = Paragraph::new(password_masked)
+                    .block(Block::default().borders(Borders::ALL).title("Password"))
+                    .style(match app.active_field {
+                        ActiveField::Password => {
+                            Style::default().fg(ratatui::style::Color::LightMagenta)
+                        }
+                        _ => Style::default(),
+                    });
+                frame.render_widget(password_input, form_layout[1]);
+
+                match app.active_field {
+                    ActiveField::Username => {
+                        if app.username.is_empty() {
+                            frame.set_cursor_position((form_layout[0].x + 1, form_layout[0].y + 1));
+                        } else if form_layout[0].width > app.username.len() as u16 + 1 {
+                            frame.set_cursor_position((
+                                form_layout[0].x + app.username.len() as u16 + 1,
+                                form_layout[0].y + 1,
+                            ));
+                        }
+                    }
+                    ActiveField::Password => match args.show_password {
+                        false => {}
+                        true => {
+                            if app.password.is_empty() {
+                                frame.set_cursor_position((form_layout[1].x + 1, form_layout[1].y + 1));
+                            } else if form_layout[1].width > app.password.len() as u16 + 1 {
+                                frame.set_cursor_position((
+                                    form_layout[1].x + app.password.len() as u16 + 1,
+                                    form_layout[1].y + 1,
+                                ));
+                            }
+                        }
+                    },
+                }
+            })?;
         }
     }
 

@@ -1,5 +1,4 @@
 use crate::animation;
-use ratatui::layout::Rect;
 
 #[derive(Debug, PartialEq)]
 pub enum ActiveField {
@@ -25,21 +24,28 @@ impl App {
         }
     }
 
-    // This method updates the animation state on each tick
-    pub fn on_tick(&mut self) {
+    pub fn on_tick(&mut self) -> bool {
         if let Some(anim) = &mut self.animation {
-            anim.update();
+            anim.update()
+        } else {
+            false
         }
     }
 
-    // Your draw method must render the animation widget first
     pub fn draw(&mut self, frame: &mut ratatui::Frame, animation_cmd: &Option<String>) {
         if self.animation.is_none() {
             self.animation = animation_cmd.as_ref().map(|cmd| {
                 let mut parts = cmd.split_whitespace();
                 let command = parts.next().unwrap_or("");
                 let args: Vec<&str> = parts.collect();
-                animation::Animation::new(command, &args, frame.area())
+                log::info!("Creating animation: {} {:?}", command, args);
+                let anim = animation::Animation::new(command, &args, frame.area());
+                if anim.is_some() {
+                    log::info!("Animation created successfully");
+                } else {
+                    log::error!("Failed to create animation");
+                }
+                anim
             }).flatten();
         }
         if let Some(anim) = &self.animation {
