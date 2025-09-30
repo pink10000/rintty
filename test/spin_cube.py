@@ -179,7 +179,7 @@ def main(stdscr):
             # Add frame counter and instructions
             try:
                 stdscr.addstr(0, 0, f"Frame: {frame_count}", curses.color_pair(7) if curses.has_colors() else 0)
-                stdscr.addstr(1, 0, "Press 'q' to quit", curses.color_pair(7) if curses.has_colors() else 0)
+                # stdscr.addstr(1, 0, "Press 'q' to quit", curses.color_pair(7) if curses.has_colors() else 0)
             except curses.error:
                 pass
 

@@ -39,4 +39,4 @@ if [ ! -f "target/release/rintty" ] || [ "src/main.rs" -nt "target/release/rintt
 fi
 
 # Run rintty on tty2
-sudo ./target/release/rintty "$TTY_DEVICE" 
+sudo ./target/release/rintty "$TTY_DEVICE" --animation "python test/spin_cube.py" 

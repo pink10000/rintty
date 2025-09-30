@@ -24,18 +24,28 @@ struct Cli {
     /// The command to run for the background animation.
     #[arg(long)]
     animation: Option<String>,
+
+    /// Logging
+    #[arg(short = 'l', long)]
+    logging: bool,
+
+    /// Increase loggingverbosity (can be used multiple times: -v, -vv, -vvv, -vvvv)
+    #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
+    verbose: u8,
 }
 
 fn main() -> io::Result<()> {
     let cli: Cli = Cli::parse();
     
-    // Set up logging to file
-    WriteLogger::init(
-        LevelFilter::Debug,
-        Config::default(),
-        File::create("rintty.log").unwrap(),
-    ).unwrap();
-    
+    if cli.logging {
+        // Set up logging to file
+        WriteLogger::init(
+            LevelFilter::Debug,
+            Config::default(),
+            File::create("rintty.log").unwrap(),
+        ).unwrap();
+    }
+
     log::info!("Rintty starting up");
     // TODO: need to make sure animation exists and is executable
 
