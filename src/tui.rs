@@ -32,8 +32,11 @@ pub fn run(args: Cli) -> io::Result<()> {
         let mut needs_redraw = first_draw; // Always redraw on first iteration
         first_draw = false;
 
-        // Check for keyboard input
-        if event::poll(Duration::from_millis(0))? {
+        // wait until next tick or a reasonable polling interval
+        // not really sure if there's a better, empirical way to determine the best timeout
+        let timeout = tick_rate.saturating_sub(last_tick.elapsed()).max(Duration::from_millis(15));
+        
+        if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
                     needs_redraw = true; // User input always triggers redraw
