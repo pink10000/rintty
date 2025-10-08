@@ -3,6 +3,11 @@ name = "rintty"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+strip = true       # Strip symbols from binary (reduces size by ~30%)
+lto = true         # Link-time optimization (smaller, faster binary)
+codegen-units = 1  # Better optimization (slower compile, smaller binary)
+
 [dependencies]
 clap = { version = "4.5.40", features = ["derive"] }
 crossterm = "0.29.0"

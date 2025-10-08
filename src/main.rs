@@ -25,6 +25,10 @@ struct Cli {
     #[arg(long)]
     animation: Option<String>,
 
+    /// The framerate that the animation will run at. It defaults to 60 FPS and caps out at 120 FPS.
+    #[arg(short = 'f', long)]
+    framerate: Option<u64>,
+
     /// Logging
     #[arg(short = 'l', long)]
     logging: bool,
@@ -44,6 +48,12 @@ fn main() -> io::Result<()> {
             Config::default(),
             File::create("rintty.log").unwrap(),
         ).unwrap();
+    }
+
+    if cli.framerate.is_some() {
+        if cli.framerate.unwrap() > 120 {
+            panic!("Max framerate cannot be greater than 120 FPS");
+        } 
     }
 
     log::info!("Rintty starting up");

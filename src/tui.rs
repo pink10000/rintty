@@ -24,7 +24,7 @@ pub fn run(args: Cli) -> io::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
 
     let mut app = App::new();
-    let tick_rate = Duration::from_millis(16); // ~60 FPS for smooth animations
+    let tick_rate = utils::calculate_tick_rate(args.framerate);
     let mut last_tick = Instant::now();
     let mut first_draw = true;
     
